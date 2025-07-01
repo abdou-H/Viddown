@@ -1,88 +1,74 @@
-const express = require("express");
-const cors = require("cors");
-const { spawn } = require("child_process");
-const path = require("path");
-const fs = require("fs");
+const express = require('express');
+const ytdl = require('ytdl-core');
+const cp = require('child_process');
+const readline = require('readline');
+const ffmpeg = require('ffmpeg-static');
 
 const app = express();
-// Use the port assigned by the hosting provider, or 5000 for local development
-const PORT = process.env.PORT || 5000;
+const PORT = process.env.PORT || 3000;
 
-app.use(cors());
-app.use(express.json());
-// Serve static files from the 'public' directory
-app.use(express.static("public"));
+app.set('view engine', 'ejs');
+app.use(express.static('public'));
+app.use(express.urlencoded({ extended: true }));
 
-let clients = [];
-
-// Server-Sent Events endpoint for progress
-app.get("/progress", (req, res) => {
-  res.setHeader("Content-Type", "text/event-stream");
-  res.setHeader("Cache-Control", "no-cache");
-  res.setHeader("Connection", "keep-alive");
-  res.flushHeaders();
-  clients.push(res);
-
-  req.on("close", () => {
-    clients = clients.filter(client => client !== res);
-  });
+app.get('/', (req, res) => {
+    res.render('index', { success: false, error: null });
 });
 
-function sendProgress(progress) {
-  clients.forEach(res => {
-    res.write(`data: ${progress}\n\n`);
-  });
-}
+app.post('/download', async (req, res) => {
+    const videoURL = req.body.url;
 
-// Main download API endpoint
-app.post("/api/download", async (req, res) => {
-  const { url, format } = req.body;
-  if (!url || !format) {
-    return res.status(400).json({ error: "Missing URL or format" });
-  }
-
-  const output = `media_${Date.now()}.${format}`;
-  const filePath = path.join(__dirname, output);
-
-  const args = format === "mp3"
-    ? ["-f", "bestaudio", "--extract-audio", "--audio-format", "mp3", "-o", output, url]
-    : ["-f", "bestvideo[ext=mp4]+bestaudio[ext=m4a]/best[ext=mp4]/best", "-o", output, url];
-
-  const yt = spawn("yt-dlp", args);
-  let errorOutput = "";
-
-  yt.stdout.on("data", (data) => {
-    const outputStr = data.toString();
-    // More robust regex to capture progress percentage
-    const match = outputStr.match(/\[download\]\s+([\d\.]+)%/);
-    if (match && match[1]) {
-      sendProgress(match[1]);
-    }
-  });
-
-  yt.stderr.on("data", (data) => {
-    console.error("stderr:", data.toString());
-    errorOutput += data.toString(); // Capture errors
-  });
-
-  yt.on("close", (code) => {
-    if (code !== 0) {
-      console.error(`yt-dlp process exited with code ${code}`);
-      // Send a more informative error to the client
-      const details = errorOutput.includes("Unsupported URL") ? "Unsupported URL" : "Download process failed.";
-      return res.status(500).json({ error: "Download failed", details });
+    if (!videoURL || !ytdl.validateURL(videoURL)) {
+        return res.render('index', { success: false, error: "Please provide a valid YouTube URL." });
     }
 
-    res.download(filePath, output, (err) => {
-      if (err) {
-        console.error("Error sending file:", err);
-      }
-      // Clean up the file from the server after download
-      fs.unlink(filePath, (unlinkErr) => {
-        if (unlinkErr) console.error("Error deleting file:", unlinkErr);
-      });
-    });
-  });
+    try {
+        const info = await ytdl.getInfo(videoURL);
+        const title = info.videoDetails.title.replace(/[^\x00-\x7F]/g, "");
+
+        res.header('Content-Disposition', `attachment; filename="${title}.mp4"`);
+
+        const audio = ytdl(videoURL, { quality: 'highestaudio' });
+        const video = ytdl(videoURL, { quality: 'highestvideo' });
+
+        const ffmpegProcess = cp.spawn(ffmpeg, [
+            '-loglevel', '8', '-hide_banner',
+            '-i', 'pipe:3',
+            '-i', 'pipe:4',
+            '-c:v', 'copy',
+            '-c:a', 'aac',
+            '-f', 'mp4',
+            'pipe:5'
+        ], {
+            windowsHide: true,
+            stdio: [
+                'inherit', 'inherit', 'inherit',
+                'pipe', 'pipe', 'pipe'
+            ]
+        });
+
+        audio.pipe(ffmpegProcess.stdio[3]);
+        video.pipe(ffmpegProcess.stdio[4]);
+        ffmpegProcess.stdio[5].pipe(res);
+
+        ffmpegProcess.on('error', (err) => {
+            console.error('FFmpeg process error:', err);
+        });
+
+        ffmpegProcess.stderr.on('data', (data) => {
+            console.error(`FFmpeg stderr: ${data}`);
+        });
+
+        ffmpegProcess.on('close', (code) => {
+            console.log(`FFmpeg process exited with code ${code}`);
+        });
+
+    } catch (err) {
+        console.error(err);
+        res.render('index', { success: false, error: "Failed to download video. The video might be private, age-restricted, or the URL is invalid." });
+    }
 });
 
-app.listen(PORT, () => console.log(`Server running on port ${PORT}`));
+app.listen(PORT, () => {
+    console.log(`Server is running on port ${PORT}`);
+});

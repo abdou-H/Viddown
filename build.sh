@@ -1,12 +1,12 @@
 #!/usr/bin/env bash
-# exit on error
+# توقف عن التنفيذ عند أول خطأ
 set -o errexit
 
-# --- Install System Dependencies ---
+# ✅ تحديث النظام وتثبيت ffmpeg و pip
 apt-get update && apt-get install -y ffmpeg python3-pip
 
-# Install yt-dlp using pip
+# ✅ تثبيت أو تحديث yt-dlp
 pip install --upgrade yt-dlp
 
-# --- Install Node.js Dependencies ---
+# ✅ تثبيت مكتبات Node.js من package.json
 npm install
