@@ -1,13 +1,22 @@
 {
-  "name": "media-downloader",
+  "name": "viddown",
   "version": "1.0.0",
-  "main": "server.js",
-  "type": "commonjs",
+  "description": "A multi-platform video downloader using yt-dlp.",
+  "main": "app.js",
   "scripts": {
-    "start": "node server.js"
+    "start": "node app.js",
+    "postinstall": "yt-dlp-wrap --download"
   },
+  "keywords": [
+    "downloader",
+    "video",
+    "yt-dlp"
+  ],
+  "author": "Abdou-H",
+  "license": "ISC",
   "dependencies": {
-    "cors": "^2.8.5",
-    "express": "^4.18.2"
+    "ejs": "^3.1.10",
+    "express": "^4.19.2",
+    "yt-dlp-wrap": "^2.3.2"
   }
 }

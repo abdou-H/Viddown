@@ -1,71 +1,58 @@
 const express = require('express');
-const ytdl = require('ytdl-core');
-const cp = require('child_process');
-const readline = require('readline');
-const ffmpeg = require('ffmpeg-static');
+const path = require('path');
+const YtDlpWrap = require('yt-dlp-wrap');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
+const ytDlpWrap = new YtDlpWrap();
 
 app.set('view engine', 'ejs');
 app.use(express.static('public'));
 app.use(express.urlencoded({ extended: true }));
 
 app.get('/', (req, res) => {
-    res.render('index', { success: false, error: null });
+    res.render('index', { success: false, error: null, videoTitle: null });
 });
 
 app.post('/download', async (req, res) => {
     const videoURL = req.body.url;
 
-    if (!videoURL || !ytdl.validateURL(videoURL)) {
-        return res.render('index', { success: false, error: "Please provide a valid YouTube URL." });
+    if (!videoURL) {
+        return res.render('index', { success: false, error: "Please provide a valid URL." });
     }
 
     try {
-        const info = await ytdl.getInfo(videoURL);
-        const title = info.videoDetails.title.replace(/[^\x00-\x7F]/g, "");
+        const metadata = await ytDlpWrap.getVideoInfo(videoURL);
+        
+        const title = metadata.title
+            .replace(/[^\x00-\x7F]/g, "")
+            .replace(/[\\/:*?"<>|]/g, '_');
+
+        const format = 'bestvideo[ext=mp4]+bestaudio[ext=m4a]/best[ext=mp4]/best';
 
         res.header('Content-Disposition', `attachment; filename="${title}.mp4"`);
+        
+        const ytDlpStream = ytDlpWrap.execStream([
+            videoURL,
+            '-f', format,
+        ]);
+        
+        console.log(`Starting download for: ${title}`);
 
-        const audio = ytdl(videoURL, { quality: 'highestaudio' });
-        const video = ytdl(videoURL, { quality: 'highestvideo' });
+        ytDlpStream.pipe(res);
 
-        const ffmpegProcess = cp.spawn(ffmpeg, [
-            '-loglevel', '8', '-hide_banner',
-            '-i', 'pipe:3',
-            '-i', 'pipe:4',
-            '-c:v', 'copy',
-            '-c:a', 'aac',
-            '-f', 'mp4',
-            'pipe:5'
-        ], {
-            windowsHide: true,
-            stdio: [
-                'inherit', 'inherit', 'inherit',
-                'pipe', 'pipe', 'pipe'
-            ]
+        ytDlpStream.on('error', (error) => {
+            console.error('Error during yt-dlp stream:', error);
+        });
+        
+        ytDlpStream.on('close', () => {
+            console.log(`Download finished for: ${title}`);
         });
 
-        audio.pipe(ffmpegProcess.stdio[3]);
-        video.pipe(ffmpegProcess.stdio[4]);
-        ffmpegProcess.stdio[5].pipe(res);
-
-        ffmpegProcess.on('error', (err) => {
-            console.error('FFmpeg process error:', err);
-        });
-
-        ffmpegProcess.stderr.on('data', (data) => {
-            console.error(`FFmpeg stderr: ${data}`);
-        });
-
-        ffmpegProcess.on('close', (code) => {
-            console.log(`FFmpeg process exited with code ${code}`);
-        });
-
-    } catch (err) {
-        console.error(err);
-        res.render('index', { success: false, error: "Failed to download video. The video might be private, age-restricted, or the URL is invalid." });
+    } catch (error) {
+        console.error(error);
+        const errorMessage = error.stderr || 'Failed to process video. The URL might be incorrect, private, or from an unsupported site.';
+        res.render('index', { success: false, error: errorMessage.split('\n')[0] });
     }
 });
 

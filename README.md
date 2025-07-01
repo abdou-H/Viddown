@@ -1,23 +1,22 @@
-# Viddown - YouTube Video Downloader
+# Viddown - Multi-Platform Video Downloader
 
-Viddown is a simple web application built with Node.js and Express that allows users to download YouTube videos with both video and audio merged.
+Viddown is a powerful web application built with Node.js that allows users to download videos from hundreds of websites, including YouTube, Facebook, Twitter, TikTok, and many more. It uses the powerful `yt-dlp` engine in the backend.
 
 ## Features
 -   Simple and clean user interface.
--   Enter a YouTube URL and get a download link.
--   Merges the highest quality video and audio streams using FFmpeg.
+-   Supports hundreds of websites, thanks to `yt-dlp`.
+-   Downloads videos in the best available MP4 format.
 
 ## Tech Stack
 -   **Backend:** Node.js, Express.js
 -   **Frontend:** EJS (Embedded JavaScript templates), CSS
--   **Core Logic:** `ytdl-core` for fetching video streams.
--   **Processing:** `ffmpeg-static` for merging video and audio.
+-   **Core Engine:** `yt-dlp-wrap` (a wrapper for the `yt-dlp` command-line program).
 
 ---
 
 ## Local Setup
 
-To run this project on your local machine, follow these steps:
+To run this project on your local machine, follow these steps.
 
 1.  **Clone the repository:**
     ```bash
@@ -33,6 +32,7 @@ To run this project on your local machine, follow these steps:
     ```bash
     npm install
     ```
+    This command will also automatically download the correct `yt-dlp` binary for your system.
 
 4.  **Start the server:**
     ```bash
@@ -42,11 +42,15 @@ To run this project on your local machine, follow these steps:
 
 ---
 
-## Deployment Notes
+## Deployment Warning
 
-This project uses **FFmpeg**, which is a system dependency and can be resource-intensive. Therefore, it may not work on all hosting platforms, especially static hosting platforms like Vercel or Netlify.
+This project is more complex to deploy than a standard Node.js application because it has external dependencies:
+1.  **`yt-dlp`**: The core download engine.
+2.  **`Python`**: `yt-dlp` is a Python program and requires a Python runtime to be installed on the server.
 
 **Recommended Hosting Platforms:**
--   **Render**: Has good support for Node.js backends and system dependencies. You may need to add a buildpack for FFmpeg.
--   **Heroku**: Similar to Render, you'll likely need to add a custom FFmpeg buildpack in your project settings.
--   **VPS (DigitalOcean, Linode, etc.)**: This gives you full control to install FFmpeg manually, making it the most reliable option.
+-   **Render**: You will need to use a Dockerfile to create a custom environment that installs Node.js, Python, and yt-dlp.
+-   **Heroku**: You will need to add buildpacks for both Node.js and Python.
+-   **VPS (DigitalOcean, Linode, etc.)**: This gives you full control to install all dependencies manually, making it the most reliable option.
+
+Static hosting platforms like Vercel or Netlify **will not work** with this project.
